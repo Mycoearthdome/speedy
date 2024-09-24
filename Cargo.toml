@@ -1,0 +1,14 @@
+[package]
+name = "speedy"
+version = "0.0.1"
+edition2024 = "2024"
+
+
+[dependencies]
+nftnl-sys = { version = "0.6.1", features = ["nftnl-1-1-1"] }
+ctrlc = "3.4.5"
+
+[[bin]]
+name = "speedy"
+path = "speedy.rs"
+ 
