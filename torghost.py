@@ -96,6 +96,7 @@ VirtualAddrNetwork 10.0.0.0/10
 AutomapHostsOnResolve 1
 TransPort 9040
 ControlPort 9051
+DNSPort 5353
 RunAsDaemon 1
 """
 
@@ -139,24 +140,41 @@ def start_torghost():
 	iptables -F
 	iptables -t nat -F
 	iptables -t mangle -F
+        iptables -P INPUT ACCEPT
+        iptables -P FORWARD ACCEPT
+        iptables -P OUTPUT ACCEPT
+	iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+	ebtables -t nat -F
+	iptables -A INPUT -p tcp --dport 22 -j ACCEPT
 	iptables -A INPUT -p udp --dport 53 -j ACCEPT
-	iptables -t nat -A OUTPUT -o em1 -p tcp -s 192.168.2.115 --syn -j REDIRECT --to-ports 9040
-	iptables -t nat -A OUTPUT -o lo -p tcp -d 192.168.2.115 -j DNAT --to-destination 172.16.0.102
-	iptables -t nat -A OUTPUT -p udp --dport 53 -j DNAT --to-destination 192.168.0.1:53
-	iptables -t nat -A OUTPUT -o em2 -p tcp ! --syn -j REDIRECT --to-ports 9040 
-	iptables -t nat -A POSTROUTING -o em2 -p udp --dport 53 -j SNAT --to-source 172.16.0.226
-	iptables -t nat -A POSTROUTING -o em1 -j MASQUERADE
+	iptables -A INPUT -s 127.0.0.0/8 -j ACCEPT
+	iptables -A INPUT -i em1 -j ACCEPT
+	iptables -A INPUT -i em2 -j ACCEPT
+	iptables -A INPUT -i lo -p tcp --dport 9040 -j ACCEPT
+	iptables -t mangle -A OUTPUT -j TTL --ttl-dec 1
+	
+	ebtables -t nat -A POSTROUTING -o em1 -j snat --to-src 74:86:7a:cf:94:7e 
 
-	iptables -A OUTPUT -o lo -d 127.0.0.1/8 -j ACCEPT
-	iptables -A OUTPUT -o lo -s 127.0.0.1/8 -j ACCEPT
+	iptables -t nat -A OUTPUT -o em1 -p tcp -j REDIRECT --to-ports 9040
+
+	ebtables -t nat -A OUTPUT -o lo -j dnat --to-dst 54:b2:03:f1:19:81
+
+	iptables -t nat -A OUTPUT -o lo -s 192.168.2.115 -j DNAT --to-destination 172.16.0.102
+	iptables -t nat -A OUTPUT -p udp --dport 53 -j DNAT --to-destination 127.0.0.1:5353 
+	iptables -t nat -A POSTROUTING -o em2 -p udp --dport 53 -j SNAT --to-source 172.16.0.226
+	iptables -t nat -A POSTROUTING -o lo -j SNAT --to-source 192.168.2.115
+	iptables -t nat -A POSTROUTING -o em1 -j SNAT --to-source 192.168.2.115
+	
+	iptables -A OUTPUT -d 127.0.0.0/8 -j ACCEPT
+	iptables -A OUTPUT -d 192.168.2.115 -j ACCEPT
 	iptables -A FORWARD -i em2 -o em1 -p udp --dport 53 -j ACCEPT
 	iptables -A FORWARD -i em1 -o em2 -p udp --dport 53 -j ACCEPT
-	iptables -A FORWARD -i em1 -o em2 -p tcp -j ACCEPT
-	iptables -A FORWARD -i em2 -o em1 -p tcp -j ACCEPT
-	iptables -A FORWARD -i em2 -o em2 -p tcp -j ACCEPT
-	iptables -A FORWARD -i lo -o em2 -p tcp -j ACCEPT
 	iptables -A FORWARD -i em2 -o lo -p tcp -j ACCEPT
-	iptables -A FORWARD -i lo -o lo -p tcp -j ACCEPT
+	iptables -A FORWARD -i lo -o em2 -p tcp -j ACCEPT
+	iptables -A FORWARD -i lo -o em1 -p tcp -j ACCEPT
+	iptables -A FORWARD -i em1 -o lo -p tcp -j ACCEPT
+	iptables -A OUTPUT -p tcp --sport 22 -j ACCEPT
+	iptables -A INPUT -j DROP
 	""" \
         #% subprocess.getoutput('id -ur jordan')
 
@@ -179,6 +197,8 @@ def stop_torghost():
 	iptables -t mangle -F
 	iptables -F
 	iptables -X
+	ebtables -t nat -F
+	iptables -t nat -A POSTROUTING -o em1 -j MASQUERADE
 	"""
     os.system(IpFlush)
     os.system('sudo fuser -k 9051/tcp > /dev/null 2>&1')
